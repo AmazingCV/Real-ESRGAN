@@ -30,19 +30,36 @@ class DegradationEstimator:
             raise ValueError(f"无法读取HR图像: {hr_path}")
         if lr_img is None:
             raise ValueError(f"无法读取LR图像: {lr_path}")
-            
-        # 转换为浮点数 [0, 1]
-        if hr_img.dtype == np.uint16:
-            hr_img = hr_img.astype(np.float32) / 65535.0
-        else:
-            hr_img = hr_img.astype(np.float32) / 255.0
-            
-        if lr_img.dtype == np.uint16:
-            lr_img = lr_img.astype(np.float32) / 65535.0
-        else:
-            lr_img = lr_img.astype(np.float32) / 255.0
+        
+        # 处理图像并转换为浮点数 [0, 1]
+        hr_img = self._normalize_image(hr_img)
+        lr_img = self._normalize_image(lr_img)
             
         return hr_img, lr_img
+    
+    def _normalize_image(self, img):
+        """标准化图像到[0, 1]范围"""
+        # 处理16位图像
+        if img.dtype == np.uint16:
+            img = img.astype(np.float32) / 65535.0
+        elif img.dtype == np.uint8:
+            img = img.astype(np.float32) / 255.0
+        else:
+            # 已经是浮点数
+            img = img.astype(np.float32)
+            if img.max() > 1.0:
+                img = img / 255.0
+        
+        # 确保在[0, 1]范围
+        img = np.clip(img, 0.0, 1.0)
+        
+        # 如果是单通道灰度图但有3个维度，保持原样
+        # 如果是2维，添加通道维度方便统一处理
+        if len(img.shape) == 2:
+            # 保持2维，某些函数会检查shape
+            pass
+        
+        return img
     
     def estimate_scale_factor(self, hr_img, lr_img):
         """估计缩放比例"""
@@ -60,14 +77,20 @@ class DegradationEstimator:
         估计图像的模糊程度 (sigma)
         使用拉普拉斯方差方法
         """
-        # 转换为灰度图
-        if len(img.shape) == 3:
+        # 转换为灰度图（确保是uint8格式）
+        if len(img.shape) == 3 and img.shape[2] == 3:
             gray = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        elif len(img.shape) == 3 and img.shape[2] == 1:
+            gray = (img[:, :, 0] * 255).astype(np.uint8)
         else:
             gray = (img * 255).astype(np.uint8)
         
+        # 确保是uint8类型
+        gray = gray.astype(np.uint8)
+        
         # 计算拉普拉斯方差
-        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        laplacian_var = laplacian.var()
         
         # 计算频域能量分布
         f_transform = np.fft.fft2(gray)
@@ -94,20 +117,25 @@ class DegradationEstimator:
         估计噪声水平
         使用中值绝对偏差(MAD)方法
         """
-        if len(img.shape) == 3:
-            gray = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+        # 转换为灰度图（uint8格式）
+        if len(img.shape) == 3 and img.shape[2] == 3:
+            gray = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        elif len(img.shape) == 3 and img.shape[2] == 1:
+            gray = (img[:, :, 0] * 255).astype(np.uint8)
         else:
-            gray = img
+            gray = (img * 255).astype(np.uint8)
+        
+        # 确保是uint8类型
+        gray = gray.astype(np.uint8)
         
         # 使用高通滤波提取噪声
-        # Laplacian kernel
         noise = cv2.Laplacian(gray, cv2.CV_64F)
         
         # MAD估计
         sigma = np.median(np.abs(noise - np.median(noise))) / 0.6745
         
-        # 转换为0-255范围的噪声水平
-        noise_level = sigma * 255
+        # sigma已经是基于0-255范围的，不需要再乘255
+        noise_level = sigma
         
         return noise_level
     
@@ -116,10 +144,16 @@ class DegradationEstimator:
         估计JPEG压缩质量
         通过检测块效应
         """
-        if len(img.shape) == 3:
+        # 转换为灰度图（uint8格式）
+        if len(img.shape) == 3 and img.shape[2] == 3:
             gray = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        elif len(img.shape) == 3 and img.shape[2] == 1:
+            gray = (img[:, :, 0] * 255).astype(np.uint8)
         else:
             gray = (img * 255).astype(np.uint8)
+        
+        # 确保是uint8类型
+        gray = gray.astype(np.uint8)
         
         h, w = gray.shape
         block_size = 8

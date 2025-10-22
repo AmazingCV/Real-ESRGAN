@@ -11,8 +11,23 @@
 
 ## 安装依赖
 
+**重要**: 在使用工具前，必须先安装依赖！
+
 ```bash
+# 一次性安装所有依赖
 pip install opencv-python numpy scipy scikit-image matplotlib
+
+# 或者分步安装
+pip install opencv-python  # 图像处理
+pip install numpy          # 数值计算
+pip install scipy          # 科学计算
+pip install scikit-image   # 图像分析
+pip install matplotlib     # 可视化（用于--visualize参数）
+```
+
+**验证安装**：
+```bash
+python3 -c "import cv2, numpy, scipy, skimage, matplotlib; print('所有依赖安装成功！')"
 ```
 
 ## 使用方法

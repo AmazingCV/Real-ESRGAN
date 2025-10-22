@@ -15,11 +15,22 @@
 ### 1. 安装依赖
 
 ```bash
-# 基础依赖
+# 基础依赖（训练需要）
 pip install -r requirements.txt
 
-# 额外依赖（用于参数估计）
-pip install scikit-image matplotlib
+# 额外依赖（用于参数估计工具）
+pip install opencv-python numpy scipy scikit-image matplotlib
+```
+
+**一键安装全部依赖**：
+```bash
+pip install -r requirements.txt opencv-python numpy scipy scikit-image matplotlib
+```
+
+**验证安装**：
+```bash
+python3 -c "import cv2, numpy, scipy, skimage, matplotlib; print('✓ 参数估计工具依赖安装成功')"
+python3 -c "import torch; print('✓ 训练依赖安装成功')"
 ```
 
 ### 2. 准备数据集
