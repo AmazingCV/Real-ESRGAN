@@ -1,0 +1,233 @@
+# 红外图像Real-ESRGAN训练配置模板
+# 使用 estimate_degradation_params.py 分析你的图像后，根据输出调整下面的参数
+
+# general settings
+name: train_RealESRGAN_infrared_x4plus
+model_type: RealESRGANModel
+scale: 4  # 根据你的实际需求选择 2 或 4
+num_gpu: auto
+manual_seed: 0
+
+# ----------------- 退化参数 - 请根据estimate_degradation_params.py的输出调整 ----------------- #
+# USM锐化设置
+l1_gt_usm: True
+percep_gt_usm: True
+gan_gt_usm: False
+
+# ===== 第一次退化过程 =====
+# 以下参数需要根据你的分析结果修改！
+
+# 缩放设置
+resize_prob: [0.2, 0.7, 0.1]  # up, down, keep
+resize_range: [0.15, 1.5]
+
+# 噪声设置 - 根据分析结果修改这些值
+gaussian_noise_prob: 0.6  # 红外图像可能需要更高的噪声概率
+noise_range: [1, 30]  # ← 修改这里！根据estimate工具输出
+poisson_scale_range: [0.05, 3]  # ← 修改这里！
+gray_noise_prob: 0.6  # 红外图像建议提高灰度噪声概率
+
+# JPEG压缩设置 - 根据分析结果修改
+jpeg_range: [30, 95]  # ← 修改这里！根据estimate工具输出
+
+# ===== 第二次退化过程 =====
+second_blur_prob: 0.6  # 如果红外图像模糊较少，可以降低此值
+resize_prob2: [0.3, 0.4, 0.3]  # up, down, keep
+resize_range2: [0.3, 1.2]
+
+# 第二次噪声设置 - 根据分析结果修改
+gaussian_noise_prob2: 0.6
+noise_range2: [1, 25]  # ← 修改这里！
+poisson_scale_range2: [0.05, 2.5]  # ← 修改这里！
+gray_noise_prob2: 0.6
+
+# 第二次JPEG压缩
+jpeg_range2: [30, 95]  # ← 修改这里！
+
+# GT裁剪大小
+gt_size: 256
+queue_size: 180
+
+# ----------------- 数据集设置 ----------------- #
+datasets:
+  train:
+    name: InfraredDataset
+    type: RealESRGANDataset
+    
+    # 修改为你的数据集路径
+    dataroot_gt: datasets/infrared/train  # ← 修改为你的HR图像路径
+    meta_info: datasets/infrared/meta_info.txt  # ← 修改为你的meta_info文件路径
+    
+    io_backend:
+      type: disk
+
+    # ===== 模糊核设置 - 根据分析结果修改 =====
+    blur_kernel_size: 21
+    kernel_list: ['iso', 'aniso', 'generalized_iso', 'generalized_aniso', 'plateau_iso', 'plateau_aniso']
+    kernel_prob: [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+    
+    # 第一次模糊参数 - 根据分析结果修改
+    sinc_prob: 0.05  # 如果红外图像模糊较少，降低此值
+    blur_sigma: [0.2, 3]  # ← 修改这里！根据estimate工具输出
+    betag_range: [0.5, 4]
+    betap_range: [1, 2]
+
+    # 第二次模糊参数 - 根据分析结果修改
+    blur_kernel_size2: 21
+    kernel_list2: ['iso', 'aniso', 'generalized_iso', 'generalized_aniso', 'plateau_iso', 'plateau_aniso']
+    kernel_prob2: [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+    sinc_prob2: 0.05
+    blur_sigma2: [0.2, 1.5]  # ← 修改这里！根据estimate工具输出
+    betag_range2: [0.5, 4]
+    betap_range2: [1, 2]
+
+    # 最终sinc滤波器
+    final_sinc_prob: 0.5  # 如果红外图像模糊较少，降低此值
+
+    gt_size: 256
+    
+    # 数据增强
+    use_hflip: True  # 水平翻转
+    use_rot: False  # 如果红外图像有方向性（如热成像），建议关闭旋转
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 8  # 根据GPU显存调整
+    dataset_enlarge_ratio: 1
+    prefetch_mode: ~
+
+# ----------------- 网络结构 ----------------- #
+network_g:
+  type: RRDBNet
+  # 根据你的红外图像类型选择通道数
+  num_in_ch: 3  # 如果是灰度红外图像，改为1；如果是RGB伪彩色，保持3
+  num_out_ch: 3  # 与num_in_ch保持一致
+  num_feat: 64
+  num_block: 23
+  num_grow_ch: 32
+
+network_d:
+  type: UNetDiscriminatorSN
+  num_in_ch: 3  # 与network_g的num_out_ch保持一致
+  num_feat: 64
+  skip_connection: True
+
+# ----------------- 预训练模型路径 ----------------- #
+path:
+  # 使用预训练的Real-ESRNet模型
+  # 如果是灰度图像(num_in_ch=1)，可能需要自己先训练RealESRNet或修改预训练模型
+  pretrain_network_g: experiments/pretrained_models/RealESRNet_x4plus.pth
+  param_key_g: params_ema
+  strict_load_g: false  # 如果通道数不匹配，设置为false
+  resume_state: ~
+
+# ----------------- 训练设置 ----------------- #
+train:
+  ema_decay: 0.999
+  
+  optim_g:
+    type: Adam
+    lr: !!float 1e-4
+    weight_decay: 0
+    betas: [0.9, 0.99]
+  
+  optim_d:
+    type: Adam
+    lr: !!float 1e-4
+    weight_decay: 0
+    betas: [0.9, 0.99]
+
+  scheduler:
+    type: MultiStepLR
+    milestones: [50000, 100000, 200000, 300000]
+    gamma: 0.5
+
+  total_iter: 400000
+  warmup_iter: -1  # no warm up
+
+  # losses
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+  
+  # perceptual loss
+  perceptual_opt:
+    type: PerceptualLoss
+    layer_weights:
+      'conv1_2': 0.1
+      'conv2_2': 0.1
+      'conv3_4': 1
+      'conv4_4': 1
+      'conv5_4': 1
+    vgg_type: vgg19
+    use_input_norm: true
+    perceptual_weight: !!float 1.0
+    style_weight: 0
+    range_norm: false
+    criterion: l1
+  
+  # gan loss
+  gan_opt:
+    type: GANLoss
+    gan_type: vanilla
+    real_label_val: 1.0
+    fake_label_val: 0.0
+    loss_weight: !!float 1e-1
+
+  net_d_iters: 1
+  net_d_init_iters: 0
+
+# ----------------- 验证设置（可选）----------------- #
+val:
+  val_freq: !!float 5e3
+  save_img: True
+
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 4
+      test_y_channel: false
+
+# ----------------- 日志设置 ----------------- #
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 5e3
+  use_tb_logger: true
+  wandb:
+    project: realesrgan-infrared
+    resume_id: ~
+
+# ----------------- 分布式训练设置 ----------------- #
+dist_params:
+  backend: nccl
+  port: 29500
+
+# ================================================================================
+# 使用说明:
+# 
+# 1. 运行 estimate_degradation_params.py 分析你的LR/HR图像对:
+#    python estimate_degradation_params.py --hr_dir ./hr_images --lr_dir ./lr_images --visualize
+#
+# 2. 根据输出结果，修改以下参数（标记为 ← 修改这里！的地方）:
+#    - blur_sigma, blur_sigma2
+#    - noise_range, noise_range2
+#    - poisson_scale_range, poisson_scale_range2
+#    - jpeg_range, jpeg_range2
+#
+# 3. 修改数据集路径:
+#    - dataroot_gt: 你的HR图像目录
+#    - meta_info: 你的meta_info.txt文件
+#
+# 4. 根据红外图像类型调整:
+#    - num_in_ch, num_out_ch: 灰度图=1, RGB=3
+#    - use_rot: 如果图像有方向性，设为False
+#
+# 5. 创建meta_info.txt文件:
+#    运行: python scripts/generate_meta_info.py --input datasets/infrared/train --root datasets/infrared/train --meta_info datasets/infrared/meta_info.txt
+#
+# 6. 开始训练:
+#    python realesrgan/train.py -opt options/train_realesrgan_x4plus_infrared.yml
+#
+# ================================================================================
